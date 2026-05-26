@@ -3,7 +3,7 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, Permission
 const fs = require('fs');
 const express = require('express');
 
-// --- 0. HEARTBEAT WEB SERVER (Keeps him alive 24/7 in the cloud) ---
+// --- 0. HEARTBEAT WEB SERVER ---
 const app = express();
 app.get('/', (req, res) => res.send('Commander Felcher is sipping chicory and watching the board.'));
 app.listen(3000, () => console.log('[SYSTEM] Heartbeat initiated.'));
@@ -13,18 +13,15 @@ const client = new Client({
 });
 
 const officeChannelId = '1506359452184608939';
-
-// The Ledger (Remembers strikes)
 const strikes = new Map();
 
-// --- 12-HOUR AUTO-RESET ---
-// Clears the strike ledger every 12 hours automatically
+// 12-Hour Reset
 setInterval(() => {
     strikes.clear();
     console.log('[SYSTEM] 12-Hour Timer: The strike ledger has been wiped clean.');
 }, 12 * 60 * 60 * 1000);
 
-// --- 📖 THE SCRIPTURE ASSIGNMENTS (30 References for the Bible Bot) ---
+// --- THE ARMORY & SNARK ---
 const bibleArmory = [
     'Ephesians 4:29', 'Colossians 3:8', 'Psalm 141:3', 'Proverbs 21:23', 'Matthew 12:36',
     'Proverbs 15:1', 'Proverbs 12:18', 'James 1:19', 'Matthew 5:22', 'Ephesians 4:31',
@@ -34,7 +31,6 @@ const bibleArmory = [
     'Psalm 34:13', 'Proverbs 12:16', 'Proverbs 15:2', 'James 3:10', 'Proverbs 10:14'
 ];
 
-// --- ☕ THE PASSIVE-AGGRESSIVE ROASTS (20 Remarks) ---
 const snarkyRemarks = [
     "Oh, look. The pawn is attempting to speak. How exhausting.",
     "Did your keyboard break, or is typing with dignity simply too taxing for your current mental state?",
@@ -58,17 +54,8 @@ const snarkyRemarks = [
     "Do us all a favor and keep those thoughts confined to the privacy of your own head."
 ];
 
-// --- 📝 COMMAND REGISTRATION ---
+// --- COMMAND REGISTRATION ---
 const commands = [
-    new SlashCommandBuilder()
-        .setName('add')
-        .setDescription('Add a word to the Commander\'s hit-list.')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addStringOption(option => 
-            option.setName('category').setDescription('Category').setRequired(true)
-                .addChoices({ name: 'Profanity', value: 'profanity' }, { name: 'Degrading', value: 'degrading' }, { name: 'Bully', value: 'bully' }))
-        .addStringOption(option => option.setName('word').setDescription('The word to ban').setRequired(true)),
-    
     new SlashCommandBuilder()
         .setName('ledger')
         .setDescription('Check how many strikes a recruit currently has.')
@@ -86,11 +73,11 @@ const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 client.once('ready', async () => {
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log(`[SYSTEM] Commander Felcher is online. Commands, Ledger, and Roasts loaded.`);
+        console.log(`[SYSTEM] Commander Felcher is online.`);
     } catch (error) { console.error(error); }
 });
 
-// --- 👁️ SNIPER PROTOCOL ---
+// --- SURVEILLANCE PROTOCOL ---
 client.on('messageDelete', async message => {
     if (message.author?.bot || !message.content) return;
     const officeChannel = client.channels.cache.get(officeChannelId);
@@ -99,7 +86,7 @@ client.on('messageDelete', async message => {
     }
 });
 
-// --- ☕ THE DISCIPLINE & STRIKE PROTOCOL ---
+// --- THE DISCIPLINE ENGINE ---
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
@@ -116,7 +103,14 @@ client.on('messageCreate', async message => {
 
     let triggeredViolation = false;
     for (const [category, words] of Object.entries(wordsDB)) {
-        if (words.some(word => new RegExp(`\\b${word}\\b`, 'i').test(cleanMsg) || cleanMsg.includes(word))) {
+        if (words.some(word => {
+            // THE FIX: If the word is short (stfu, kys, hoe, ass), it MUST be typed by itself, not hidden inside another word!
+            if (['stfu', 'kys', 'hoe', 'h0e', 'ass', 'bs', 'af'].includes(word)) {
+                return new RegExp(`\\b${word}\\b`, 'i').test(cleanMsg);
+            }
+            // Otherwise, catch it anywhere
+            return cleanMsg.includes(word);
+        })) {
             triggeredViolation = true; break;
         }
     }
@@ -129,16 +123,13 @@ client.on('messageCreate', async message => {
         const randomVerse = bibleArmory[Math.floor(Math.random() * bibleArmory.length)];
 
         if (userStrikes === 1) {
-            // STRIKE 1: DO NOT DELETE. Just Warn.
             await message.reply(`> ☕ **[COMMANDER FELCHER]**\n> Ah. A mistake. I will leave this here so everyone can see your lack of vocabulary.\n> Be warned: you have **5 strikes** until you are placed in timeout, and any future profanity will be erased from my board.\n> \n> **Strike: 1/5**\n> **Assignment:** Read ${randomVerse}`);
         } 
         else if (userStrikes >= 2 && userStrikes <= 4) {
-            // STRIKES 2, 3, 4: Delete and Roast.
             await message.delete().catch(() => {});
             await message.channel.send(`> ☕ **[COMMANDER FELCHER]**\n> <@${message.author.id}>, ${randomSnark}\n> \n> **Strike: ${userStrikes}/5**\n> **Assignment:** Read ${randomVerse}`);
         } 
         else if (userStrikes >= 5) {
-            // STRIKE 5: The Dungeon
             await message.delete().catch(() => {});
             try {
                 if (message.member.manageable) await message.member.timeout(10 * 60 * 1000, 'Reached 5 Strikes.');
@@ -150,23 +141,9 @@ client.on('messageCreate', async message => {
     }
 });
 
-// --- 📋 SLASH COMMANDS (/add, /ledger, /pardon) ---
+// --- SLASH COMMANDS ---
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-
-    if (interaction.commandName === 'add') {
-        const category = interaction.options.getString('category');
-        const newWord = interaction.options.getString('word').toLowerCase();
-        const wordsDB = JSON.parse(fs.readFileSync('./violations.json'));
-        
-        if (!wordsDB[category].includes(newWord)) {
-            wordsDB[category].push(newWord);
-            fs.writeFileSync('./violations.json', JSON.stringify(wordsDB, null, 2));
-            await interaction.reply({ content: `> 👁️ Intel updated. **"${newWord}"** added to **${category}** ledger.`, ephemeral: true });
-        } else {
-            await interaction.reply({ content: `> ☕ Already recorded. Don't waste my time.`, ephemeral: true });
-        }
-    }
 
     if (interaction.commandName === 'ledger') {
         const target = interaction.options.getUser('recruit');
