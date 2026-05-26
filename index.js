@@ -57,14 +57,21 @@ const snarkyRemarks = [
 // --- COMMAND REGISTRATION ---
 const commands = [
     new SlashCommandBuilder()
+        .setName('add')
+        .setDescription('Add a word to the Commander\'s hit-list. (Staff Only)')
+        .addStringOption(option => 
+            option.setName('category').setDescription('Category').setRequired(true)
+                .addChoices({ name: 'Profanity', value: 'profanity' }, { name: 'Degrading', value: 'degrading' }, { name: 'Bully', value: 'bully' }))
+        .addStringOption(option => option.setName('word').setDescription('The word to ban').setRequired(true)),
+
+    new SlashCommandBuilder()
         .setName('ledger')
-        .setDescription('Check how many strikes a recruit currently has.')
+        .setDescription('Check how many strikes a recruit currently has. (Staff Only)')
         .addUserOption(option => option.setName('recruit').setDescription('The user to check').setRequired(true)),
 
     new SlashCommandBuilder()
         .setName('pardon')
-        .setDescription('Wipe a recruit\'s strikes clean (Admin only).')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .setDescription('Wipe a recruit\'s strikes clean. (Staff Only)')
         .addUserOption(option => option.setName('recruit').setDescription('The user to pardon').setRequired(true))
 ].map(command => command.toJSON());
 
@@ -104,11 +111,10 @@ client.on('messageCreate', async message => {
     let triggeredViolation = false;
     for (const [category, words] of Object.entries(wordsDB)) {
         if (words.some(word => {
-            // THE FIX: If the word is short (stfu, kys, hoe, ass), it MUST be typed by itself, not hidden inside another word!
-            if (['stfu', 'kys', 'hoe', 'h0e', 'ass', 'bs', 'af'].includes(word)) {
-                return new RegExp(`\\b${word}\\b`, 'i').test(cleanMsg);
+            if (word.length <= 4) {
+                const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                return new RegExp(`\\b${escapedWord}\\b`, 'i').test(cleanMsg);
             }
-            // Otherwise, catch it anywhere
             return cleanMsg.includes(word);
         })) {
             triggeredViolation = true; break;
@@ -141,9 +147,33 @@ client.on('messageCreate', async message => {
     }
 });
 
-// --- SLASH COMMANDS ---
+// --- SLASH COMMANDS (STAFF VERIFICATION LOGIC) ---
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
+
+    // Authorized Role IDs (Group Leader, Co-owner, Team 67, Admin)
+    const allowedRoles = ['1452078363006210058', '1493743876798681300', '1506333833933619290', '1493593657222365265']; 
+    
+    // Check if the user has an allowed role, OR if they are the Server Owner/Administrator
+    const hasPermission = interaction.member.roles.cache.some(r => allowedRoles.includes(r.id)) || interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+    if (!hasPermission) {
+        return interaction.reply({ content: `> 🦯 **[COMMANDER FELCHER]**\n> Do not touch my ledger, recruit. You do not have clearance.`, ephemeral: true });
+    }
+
+    if (interaction.commandName === 'add') {
+        const category = interaction.options.getString('category');
+        const newWord = interaction.options.getString('word').toLowerCase();
+        const wordsDB = JSON.parse(fs.readFileSync('./violations.json'));
+        
+        if (!wordsDB[category].includes(newWord)) {
+            wordsDB[category].push(newWord);
+            fs.writeFileSync('./violations.json', JSON.stringify(wordsDB, null, 2));
+            await interaction.reply({ content: `> 👁️ Intel updated. **"${newWord}"** added to **${category}** ledger.`, ephemeral: true });
+        } else {
+            await interaction.reply({ content: `> ☕ Already recorded. Don't waste my time.`, ephemeral: true });
+        }
+    }
 
     if (interaction.commandName === 'ledger') {
         const target = interaction.options.getUser('recruit');
